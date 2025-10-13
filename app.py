@@ -7,7 +7,7 @@ from risk_detector import RiskDetector
 st.set_page_config(page_title="Potential Risk Detection Demo", layout="wide")
 
 st.title("💳 Potential Risk Detection Demo")
-st.markdown("This demo simulates a two-stage risk prediction system using LightGBM + XGBoost.")
+st.markdown("This demo simulates a two-stage risk prediction system (ATM + POS) using LightGBM + XGBoost.")
 
 # Load detector
 detector = RiskDetector(model_dir="models")
