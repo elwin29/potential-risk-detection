@@ -1,7 +1,6 @@
 # Ignore model binaries
 models/*.pkl
 models/*.joblib
-models/*.model
 
 # Optional: cache files
 __pycache__/
