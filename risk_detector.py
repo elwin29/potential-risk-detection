@@ -11,8 +11,8 @@ class RiskDetector:
         self.model_dir = model_dir
 
         # === Load both stage models ===
-        self.stage1_model = joblib.load(os.path.join(model_dir, "potential_risk_lightgbm_stage1.pkl"))
-        self.stage2_model = joblib.load(os.path.join(model_dir, "potential_risk_xgboost_stage2.pkl"))
+        self.stage1_model = joblib.load(os.path.join(model_dir, "potential_risk_xgboost_stage1.pkl"))
+        self.stage2_model = joblib.load(os.path.join(model_dir, "potential_risk_lightgbm_stage2.pkl"))
 
         # === Load label encoders (optional) ===
         label_encoders_path = os.path.join(model_dir, "label_encoders.pkl")
@@ -38,7 +38,7 @@ class RiskDetector:
             self.feature_list = []
 
         # Threshold configuration
-        self.stage1_threshold = self.config.get("stage1_threshold", 0.6)
+        self.stage1_threshold = self.config.get("stage1_threshold", 0.5)
         self.stage2_thresholds = self.config.get(
             "risk_thresholds", {"low": 0.4, "medium": 0.7}
         )
@@ -81,7 +81,7 @@ class RiskDetector:
         """Run 2-stage prediction pipeline with timing + confidence display."""
         X = self.preprocess_input(input_data)
 
-        # === Stage 1: LightGBM ===
+        # === Stage 1: XGBoost ===
         start_time = time.time()
         stage1_prob = float(self.stage1_model.predict_proba(X)[:, 1][0])
         stage1_time = time.time() - start_time
@@ -92,7 +92,7 @@ class RiskDetector:
         # If below threshold, stop here (no need for Stage 2)
         if stage1_prob < self.stage1_threshold:
             return {
-                "stage": "Stage 1 (LightGBM)",
+                "stage": "Stage 1 (XGBoost)",
                 "probability": stage1_prob,
                 "confidence": stage1_confidence,
                 "inference_time": round(stage1_time, 4),

@@ -10,106 +10,241 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🧠 Potential Risk Detector")
-st.caption("Two-stage fraud risk prediction system using LightGBM + XGBoost")
+st.title("🧠 Two-Stage Fraud Risk Detector")
+st.caption("Stage 1: XGBoost (High Recall) → Stage 2: LightGBM (High Precision)")
 
 # --- Load Models ---
 @st.cache_resource
 def load_models():
-    lightgbm_model = joblib.load("models/potential_risk_lightgbm_stage1.pkl")
-    xgboost_model = joblib.load("models/potential_risk_xgboost_stage2.pkl")
-    return lightgbm_model, xgboost_model
+    """
+    Load both models:
+    - Stage 1: XGBoost (casts wide net, high recall)
+    - Stage 2: LightGBM (filters results, high precision)
+    """
+    # ✅ FIXED: Correct model loading order
+    xgboost_model = joblib.load("models/potential_risk_xgboost_stage1.pkl")
+    lightgbm_model = joblib.load("models/potential_risk_lightgbm_stage2.pkl")
+    return xgboost_model, lightgbm_model
 
 try:
-    lightgbm_model, xgboost_model = load_models()
+    xgboost_model, lightgbm_model = load_models()
+    st.success("✅ Models loaded successfully!")
 except Exception as e:
     st.error(f"❌ Failed to load models: {e}")
     st.stop()
 
-# --- Manual Input Section ---
-st.sidebar.header("🔢 Input PAN Features (Manual Entry)")
+# --- Feature Definition ---
+# ✅ Define the 10 features used by your models
+REQUIRED_FEATURES = [
+    'TXN_COUNT',
+    'UNIQUE_TERMINALS',
+    'AVG_TIME_BETWEEN_TXN',
+    'APPROVED_COUNT',
+    'UNIQUE_ISSUERS',
+    'RAPID_TXN_COUNT',
+    'ACQUIRER_ENCODED',
+    'MIN_TIME_BETWEEN_TXN',
+    'UNIQUE_TRAN_TYPES',
+    'ISSUER_ENCODED'
+]
+
+# --- Sidebar: Manual Input ---
+st.sidebar.header("🔢 Input PAN Features")
+st.sidebar.markdown("Enter transaction features for a single PAN:")
 
 input_data = {
-    "TXN_COUNT": st.sidebar.number_input("TXN_COUNT", 0, 10000, 50),
-    "UNIQUE_TERMINALS": st.sidebar.number_input("UNIQUE_TERMINALS", 0, 500, 10),
-    "AVG_TIME_BETWEEN_TXN": st.sidebar.number_input("AVG_TIME_BETWEEN_TXN", 0.0, 5000.0, 300.0),
-    "APPROVED_COUNT": st.sidebar.number_input("APPROVED_COUNT", 0, 10000, 45),
-    "UNIQUE_ISSUERS": st.sidebar.number_input("UNIQUE_ISSUERS", 0, 50, 3),
-    "RAPID_TXN_COUNT": st.sidebar.number_input("RAPID_TXN_COUNT", 0, 500, 5),
-    "ACQUIRER_ENCODED": st.sidebar.number_input("ACQUIRER_ENCODED", 0, 100, 1),
-    "MIN_TIME_BETWEEN_TXN": st.sidebar.number_input("MIN_TIME_BETWEEN_TXN", 0.0, 5000.0, 10.0),
-    "UNIQUE_TRAN_TYPES": st.sidebar.number_input("UNIQUE_TRAN_TYPES", 0, 10, 2),
-    "ISSUER_ENCODED": st.sidebar.number_input("ISSUER_ENCODED", 0, 100, 2)
+    "TXN_COUNT": st.sidebar.number_input("Transaction Count", 0, 10000, 50, help="Total number of transactions"),
+    "UNIQUE_TERMINALS": st.sidebar.number_input("Unique Terminals", 0, 500, 10, help="Number of different terminals used"),
+    "AVG_TIME_BETWEEN_TXN": st.sidebar.number_input("Avg Time Between Txn (hours)", 0.0, 5000.0, 300.0, help="Average hours between transactions"),
+    "APPROVED_COUNT": st.sidebar.number_input("Approved Count", 0, 10000, 45, help="Number of approved transactions"),
+    "UNIQUE_ISSUERS": st.sidebar.number_input("Unique Issuers", 0, 50, 3, help="Number of different issuer banks"),
+    "RAPID_TXN_COUNT": st.sidebar.number_input("Rapid Transactions (<1hr)", 0, 500, 5, help="Transactions within 1 hour of each other"),
+    "ACQUIRER_ENCODED": st.sidebar.number_input("Acquirer ID (encoded)", 0, 100, 1, help="Encoded acquirer bank ID"),
+    "MIN_TIME_BETWEEN_TXN": st.sidebar.number_input("Min Time Between Txn (hours)", 0.0, 5000.0, 10.0, help="Minimum hours between transactions"),
+    "UNIQUE_TRAN_TYPES": st.sidebar.number_input("Unique Transaction Types", 0, 10, 2, help="Number of different transaction types"),
+    "ISSUER_ENCODED": st.sidebar.number_input("Issuer ID (encoded)", 0, 100, 2, help="Encoded issuer bank ID")
 }
 
-input_df = pd.DataFrame([input_data])
-st.write("### 🧾 Input Data")
-st.dataframe(input_df)
+# Create DataFrame with correct feature order
+input_df = pd.DataFrame([input_data])[REQUIRED_FEATURES]
+
+st.write("### 🧾 Input Data Preview")
+st.dataframe(input_df, use_container_width=True)
 
 # --- Prediction Button ---
-if st.button("🚀 Predict Risk"):
+if st.button("🚀 Run Two-Stage Prediction", use_container_width=True):
     st.markdown("---")
 
     try:
         features = input_df.values
 
-        # --- Stage 1 (LightGBM) ---
-        start_time = time.time()
-        stage1_prob = float(lightgbm_model.predict_proba(features)[0][1])
-        stage1_time = (time.time() - start_time) * 1000
+        # ==========================================
+        # STAGE 1: XGBoost - Cast Wide Net (High Recall)
+        # ==========================================
+        with st.spinner("Running Stage 1 (XGBoost)..."):
+            start_time = time.time()
+            stage1_prob = float(xgboost_model.predict_proba(features)[0][1])
+            stage1_time = (time.time() - start_time) * 1000
+
+        # Calculate confidence (how sure the model is)
+        stage1_confidence = round(max(stage1_prob, 1 - stage1_prob) * 100, 2)
 
         stage1_result = {
-            "stage": "Stage 1 (LightGBM)",
-            "probability": stage1_prob,
-            "confidence": round((1 - stage1_prob) * 100 if stage1_prob < 0.5 else stage1_prob * 100, 2),
-            "inference_time": round(stage1_time, 4),
-            "risk_tier": "Low" if stage1_prob < 0.3 else "Medium" if stage1_prob < 0.6 else "High",
-            "stage_triggered": stage1_prob >= 0.6
+            "stage": "Stage 1 - XGBoost Screening",
+            "probability": round(stage1_prob, 4),
+            "confidence": stage1_confidence,
+            "inference_time_ms": round(stage1_time, 2),
+            "decision": "Flagged for Stage 2" if stage1_prob >= 0.5 else "Cleared (Not Suspicious)",
+            "stage2_triggered": stage1_prob >= 0.5
         }
 
-        # --- Stage 2 (XGBoost) if triggered ---
-        stage2_result = None
-        if stage1_result["stage_triggered"]:
+        # Display Stage 1 Results
+        st.subheader("📊 Stage 1 Results (XGBoost - Wide Net)")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Fraud Probability", f"{stage1_prob:.1%}")
+        with col2:
+            st.metric("Confidence", f"{stage1_confidence:.1f}%")
+        with col3:
+            st.metric("Inference Time", f"{stage1_time:.2f} ms")
+
+        # If Stage 1 says "not suspicious", stop here
+        if not stage1_result["stage2_triggered"]:
+            st.success("✅ **CLEARED** - Stage 1 assessment: Not suspicious. No further analysis needed.")
+            
+            with st.expander("📄 View Stage 1 Details"):
+                st.json(stage1_result)
+            
+            st.stop()
+
+        # ==========================================
+        # STAGE 2: LightGBM - Filter & Prioritize (High Precision)
+        # ==========================================
+        st.warning("⚠️ **FLAGGED BY STAGE 1** - Proceeding to Stage 2 for detailed analysis...")
+
+        with st.spinner("Running Stage 2 (LightGBM)..."):
             start_time = time.time()
-            stage2_prob = float(xgboost_model.predict_proba(features)[0][1])
+            stage2_prob = float(lightgbm_model.predict_proba(features)[0][1])
             stage2_time = (time.time() - start_time) * 1000
 
-            stage2_result = {
-                "stage": "Stage 2 (XGBoost)",
-                "probability": stage2_prob,
-                "confidence": round((1 - stage2_prob) * 100 if stage2_prob < 0.5 else stage2_prob * 100, 2),
-                "inference_time": round(stage2_time, 4),
-                "risk_tier": "Low" if stage2_prob < 0.3 else "Medium" if stage2_prob < 0.6 else "High",
-                "stage_triggered": True
-            }
+        # Calculate confidence
+        stage2_confidence = round(max(stage2_prob, 1 - stage2_prob) * 100, 2)
 
-        # --- Display Results ---
-        st.subheader("🧠 Prediction Summary")
+        # Determine final risk tier based on Stage 2 (LightGBM - High Precision)
+        if stage2_prob >= 0.90:
+            risk_tier = "🔴 CRITICAL"
+            action = "Block card immediately - Very high confidence fraud"
+            color = "red"
+        elif stage2_prob >= 0.85:
+            risk_tier = "🟠 HIGH"
+            action = "Investigate within 24 hours - High confidence fraud"
+            color = "orange"
+        elif stage2_prob >= 0.75:
+            risk_tier = "🟡 MEDIUM"
+            action = "Review within 3 days - Moderate fraud indicators"
+            color = "yellow"
+        elif stage1_prob >= 0.7:
+            risk_tier = "🟡 MEDIUM"
+            action = "Manual review - Conflicting model signals (XGBoost confident, LightGBM uncertain)"
+            color = "yellow"
+        else:
+            risk_tier = "🟢 LOW"
+            action = "Monitor only - Weak fraud indicators"
+            color = "green"
 
-        final_prob = stage2_result["probability"] if stage2_result else stage1_result["probability"]
-        final_tier = stage2_result["risk_tier"] if stage2_result else stage1_result["risk_tier"]
-        stage_triggered = stage1_result["stage_triggered"]
+        # Calculate weighted final probability (favor LightGBM's precision)
+        final_prob = 0.3 * stage1_prob + 0.7 * stage2_prob
 
-        st.metric("Predicted Risk Probability", f"{final_prob:.3f}")
-        st.markdown(f"**Risk Tier:** {final_tier}")
-        st.markdown(f"**Stage Triggered:** {stage_triggered}")
+        stage2_result = {
+            "stage": "Stage 2 - LightGBM Filtering",
+            "probability": round(stage2_prob, 4),
+            "confidence": stage2_confidence,
+            "inference_time_ms": round(stage2_time, 2),
+            "risk_tier": risk_tier,
+            "action": action,
+            "final_probability": round(final_prob, 4)
+        }
 
+        # Display Stage 2 Results
         st.markdown("---")
+        st.subheader("🎯 Stage 2 Results (LightGBM - Precision Filter)")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Stage 2 Probability", f"{stage2_prob:.1%}")
+        with col2:
+            st.metric("Final Probability", f"{final_prob:.1%}", help="Weighted: 30% XGBoost + 70% LightGBM")
+        with col3:
+            st.metric("Confidence", f"{stage2_confidence:.1f}%")
+        with col4:
+            st.metric("Inference Time", f"{stage2_time:.2f} ms")
 
-        st.write(f"🕒 Stage 1 Inference Time: `{stage1_result['inference_time']}` ms")
-        if stage2_result:
-            st.write(f"🚀 Stage 2 Inference Time: `{stage2_result['inference_time']}` ms")
+        # Risk Tier Display
+        st.markdown("---")
+        st.subheader("🚨 Final Assessment")
+        
+        if "CRITICAL" in risk_tier:
+            st.error(f"**Risk Tier:** {risk_tier}")
+            st.error(f"**Recommended Action:** {action}")
+        elif "HIGH" in risk_tier:
+            st.warning(f"**Risk Tier:** {risk_tier}")
+            st.warning(f"**Recommended Action:** {action}")
+        elif "MEDIUM" in risk_tier:
+            st.info(f"**Risk Tier:** {risk_tier}")
+            st.info(f"**Recommended Action:** {action}")
+        else:
+            st.success(f"**Risk Tier:** {risk_tier}")
+            st.success(f"**Recommended Action:** {action}")
 
-        confidence = stage2_result["confidence"] if stage2_result else stage1_result["confidence"]
-        st.info(f"Model is **{confidence}% confident** this PAN is {'risky' if final_prob >= 0.6 else 'not risky'}.")
+        # Model Agreement Analysis
+        st.markdown("---")
+        st.subheader("🔍 Model Agreement Analysis")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Stage 1 (XGBoost - High Recall):**")
+            st.markdown(f"- Probability: {stage1_prob:.1%}")
+            st.markdown(f"- Assessment: {'Flagged as suspicious' if stage1_prob >= 0.5 else 'Cleared'}")
+        
+        with col2:
+            st.markdown("**Stage 2 (LightGBM - High Precision):**")
+            st.markdown(f"- Probability: {stage2_prob:.1%}")
+            st.markdown(f"- Assessment: {risk_tier}")
 
-        # --- JSON Outputs ---
-        st.markdown("### 📄 Full JSON Output")
-        st.json(stage1_result)
+        # Agreement indicator
+        agreement_diff = abs(stage1_prob - stage2_prob)
+        if agreement_diff < 0.1:
+            st.success("✅ **Strong Agreement** - Both models have similar confidence")
+        elif agreement_diff < 0.2:
+            st.info("ℹ️ **Moderate Agreement** - Models generally align")
+        else:
+            st.warning("⚠️ **Conflicting Signals** - Models disagree significantly. Manual review recommended.")
 
-        if stage2_result:
-            st.markdown("### 🚀 Stage 2 Result")
+        # Performance Metrics
+        st.markdown("---")
+        st.subheader("⚡ Performance Metrics")
+        
+        total_time = stage1_time + stage2_time
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Stage 1 Time", f"{stage1_time:.2f} ms")
+        with col2:
+            st.metric("Stage 2 Time", f"{stage2_time:.2f} ms")
+        with col3:
+            st.metric("Total Time", f"{total_time:.2f} ms")
+
+        # JSON Outputs
+        with st.expander("📄 View Full Stage 1 JSON Output"):
+            st.json(stage1_result)
+
+        with st.expander("📄 View Full Stage 2 JSON Output"):
             st.json(stage2_result)
 
     except Exception as e:
         st.error(f"❌ Prediction Error: {e}")
+        st.exception(e)
+
+# --- Footer ---
+st.markdown("---")
+st.caption("🧠 Two-Stage Fraud Detection System | Stage 1: XGBoost (85% Recall) → Stage 2: LightGBM (91% Precision)")
