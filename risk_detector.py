@@ -11,8 +11,8 @@ class RiskDetector:
         self.model_dir = model_dir
 
         # === Load both stage models ===
-        self.stage1_model = joblib.load(os.path.join(model_dir, "potential_risk_xgboost_stage1.pkl"))
-        self.stage2_model = joblib.load(os.path.join(model_dir, "potential_risk_lightgbm_stage2.pkl"))
+        self.stage1_model = joblib.load(os.path.join(model_dir, "xgboost_stage1_model_v2.pkl"))
+        self.stage2_model = joblib.load(os.path.join(model_dir, "lightgbm_stage2_model_v2.pkl"))
 
         # === Load label encoders (optional) ===
         label_encoders_path = os.path.join(model_dir, "label_encoders.pkl")
@@ -45,16 +45,16 @@ class RiskDetector:
 
         # === Define top 10 features used by both models ===
         self.stage1_features = [
-            'TXN_COUNT',
-            'UNIQUE_TERMINALS',
-            'AVG_TIME_BETWEEN_TXN',
-            'APPROVED_COUNT',
-            'UNIQUE_ISSUERS',
-            'RAPID_TXN_COUNT',
-            'ACQUIRER_ENCODED',
-            'MIN_TIME_BETWEEN_TXN',
-            'UNIQUE_TRAN_TYPES',
-            'ISSUER_ENCODED'
+            'APPROVED_COUNT',           # 1st - 21.26%
+            'AVG_TIME_BETWEEN_TXN',     # 2nd - 18.33%
+            'UNIQUE_TERMINALS',         # 3rd - 15.37%
+            'RAPID_TXN_COUNT',          # 4th - 8.30%
+            'UNIQUE_ISSUERS',           # 5th - 4.95%
+            'MIN_TIME_BETWEEN_TXN',     # 6th - 4.64%
+            'MAX_TXN_PER_DAY',          # 7th - 3.42%
+            'ACQUIRER_ENCODED',         # 8th - 3.16%
+            'UNIQUE_TRAN_TYPES',        # 9th - 2.44%
+            'DATE_SPAN_DAYS',
         ]
 
     # ---------------------------------------------------------------

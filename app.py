@@ -21,9 +21,8 @@ def load_models():
     - Stage 1: XGBoost (casts wide net, high recall)
     - Stage 2: LightGBM (filters results, high precision)
     """
-    # ✅ FIXED: Correct model loading order
-    xgboost_model = joblib.load("models/potential_risk_xgboost_stage1.pkl")
-    lightgbm_model = joblib.load("models/potential_risk_lightgbm_stage2.pkl")
+    xgboost_model = joblib.load("models/xgboost_stage1_model_v2.pkl")
+    lightgbm_model = joblib.load("models/lightgbm_stage2_model_v2.pkl")
     return xgboost_model, lightgbm_model
 
 try:
@@ -34,38 +33,39 @@ except Exception as e:
     st.stop()
 
 # --- Feature Definition ---
-# ✅ Define the 10 features used by your models
+# ✅ Top 10 features used by your models (based on importance)
 REQUIRED_FEATURES = [
-    'TXN_COUNT',
-    'UNIQUE_TERMINALS',
-    'AVG_TIME_BETWEEN_TXN',
-    'APPROVED_COUNT',
-    'UNIQUE_ISSUERS',
-    'RAPID_TXN_COUNT',
-    'ACQUIRER_ENCODED',
-    'MIN_TIME_BETWEEN_TXN',
-    'UNIQUE_TRAN_TYPES',
-    'ISSUER_ENCODED'
+    'APPROVED_COUNT',           # 1st - 21.26%
+    'AVG_TIME_BETWEEN_TXN',     # 2nd - 18.33%
+    'UNIQUE_TERMINALS',         # 3rd - 15.37%
+    'RAPID_TXN_COUNT',          # 4th - 8.30%
+    'UNIQUE_ISSUERS',           # 5th - 4.95%
+    'MIN_TIME_BETWEEN_TXN',     # 6th - 4.64%
+    'MAX_TXN_PER_DAY',          # 7th - 3.42%
+    'ACQUIRER_ENCODED',         # 8th - 3.16%
+    'UNIQUE_TRAN_TYPES',        # 9th - 2.44%
+    'DATE_SPAN_DAYS',           # 10th - 2.12%
 ]
 
 # --- Sidebar: Manual Input ---
 st.sidebar.header("🔢 Input PAN Features")
 st.sidebar.markdown("Enter transaction features for a single PAN:")
 
+# ✅ FIXED: Include ALL required features in input_data
 input_data = {
-    "TXN_COUNT": st.sidebar.number_input("Transaction Count", 0, 10000, 50, help="Total number of transactions"),
-    "UNIQUE_TERMINALS": st.sidebar.number_input("Unique Terminals", 0, 500, 10, help="Number of different terminals used"),
-    "AVG_TIME_BETWEEN_TXN": st.sidebar.number_input("Avg Time Between Txn (hours)", 0.0, 5000.0, 300.0, help="Average hours between transactions"),
     "APPROVED_COUNT": st.sidebar.number_input("Approved Count", 0, 10000, 45, help="Number of approved transactions"),
-    "UNIQUE_ISSUERS": st.sidebar.number_input("Unique Issuers", 0, 50, 3, help="Number of different issuer banks"),
+    "AVG_TIME_BETWEEN_TXN": st.sidebar.number_input("Avg Time Between Txn (hours)", 0.0, 5000.0, 300.0, help="Average hours between transactions"),
+    "UNIQUE_TERMINALS": st.sidebar.number_input("Unique Terminals", 0, 500, 10, help="Number of different terminals used"),
     "RAPID_TXN_COUNT": st.sidebar.number_input("Rapid Transactions (<1hr)", 0, 500, 5, help="Transactions within 1 hour of each other"),
-    "ACQUIRER_ENCODED": st.sidebar.number_input("Acquirer ID (encoded)", 0, 100, 1, help="Encoded acquirer bank ID"),
+    "UNIQUE_ISSUERS": st.sidebar.number_input("Unique Issuers", 0, 50, 3, help="Number of different issuer banks"),
     "MIN_TIME_BETWEEN_TXN": st.sidebar.number_input("Min Time Between Txn (hours)", 0.0, 5000.0, 10.0, help="Minimum hours between transactions"),
+    "MAX_TXN_PER_DAY": st.sidebar.number_input("Max Transactions Per Day", 0, 1000, 20, help="Maximum transactions in a single day"),
+    "ACQUIRER_ENCODED": st.sidebar.number_input("Acquirer ID (encoded)", 0, 100, 1, help="Encoded acquirer bank ID"),
     "UNIQUE_TRAN_TYPES": st.sidebar.number_input("Unique Transaction Types", 0, 10, 2, help="Number of different transaction types"),
-    "ISSUER_ENCODED": st.sidebar.number_input("Issuer ID (encoded)", 0, 100, 2, help="Encoded issuer bank ID")
+    "DATE_SPAN_DAYS": st.sidebar.number_input("Date Span (days)", 0, 1000, 30, help="Number of days between first and last transaction"),
 }
 
-# Create DataFrame with correct feature order
+# ✅ Create DataFrame with correct feature order
 input_df = pd.DataFrame([input_data])[REQUIRED_FEATURES]
 
 st.write("### 🧾 Input Data Preview")
@@ -220,7 +220,7 @@ if st.button("🚀 Run Two-Stage Prediction", use_container_width=True):
             st.info("ℹ️ **Moderate Agreement** - Models generally align")
         else:
             st.warning("⚠️ **Conflicting Signals** - Models disagree significantly. Manual review recommended.")
-
+        
         # Performance Metrics
         st.markdown("---")
         st.subheader("⚡ Performance Metrics")
