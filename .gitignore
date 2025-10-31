@@ -1,8 +1,8 @@
-# Ignore model binaries
-models/*.pkl
-models/*.joblib
+# # Ignore model binaries
+# models/*.pkl
+# models/*.joblib
 
-# Optional: cache files
-__pycache__/
-*.log
-*.DS_Store
+# # Optional: cache files
+# __pycache__/
+# *.log
+# *.DS_Store
